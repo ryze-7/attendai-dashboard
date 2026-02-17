@@ -1,396 +1,251 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Sidebar } from '@/components/Sidebar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { CheckCircle2, XCircle, Clock, Download, Calendar, AlertCircle } from 'lucide-react'
+import { CheckCircle2, XCircle, Clock, Download, Calendar, AlertCircle, RefreshCw } from 'lucide-react'
+import { getAttendanceToday, getAllAttendance, clearTodayAttendance, clearAllAttendance } from '@/lib/api'
+import type { AttendanceRecord } from '@/lib/api'
 
-interface AttendanceRecord {
-  id: string
-  student_name: string
-  enrollment_number: string
-  date: string
-  time: string
-  status: 'present' | 'absent' | 'late'
-  confidence: number
-}
-
-const mockAttendanceData: AttendanceRecord[] = [
-  {
-    id: '1',
-    student_name: 'Arjun Sharma',
-    enrollment_number: 'E001',
-    date: '2025-02-17',
-    time: '09:15',
-    status: 'present',
-    confidence: 98,
-  },
-  {
-    id: '2',
-    student_name: 'Priya Gupta',
-    enrollment_number: 'E002',
-    date: '2025-02-17',
-    time: '09:22',
-    status: 'late',
-    confidence: 95,
-  },
-  {
-    id: '3',
-    student_name: 'Rahul Singh',
-    enrollment_number: 'E003',
-    date: '2025-02-17',
-    time: '09:08',
-    status: 'present',
-    confidence: 99,
-  },
-  {
-    id: '4',
-    student_name: 'Neha Verma',
-    enrollment_number: 'E004',
-    date: '2025-02-17',
-    time: '09:10',
-    status: 'present',
-    confidence: 97,
-  },
-  {
-    id: '5',
-    student_name: 'Vikram Patel',
-    enrollment_number: 'E005',
-    date: '2025-02-17',
-    time: 'N/A',
-    status: 'absent',
-    confidence: 0,
-  },
-  {
-    id: '6',
-    student_name: 'Anjali Desai',
-    enrollment_number: 'E006',
-    date: '2025-02-17',
-    time: '09:05',
-    status: 'present',
-    confidence: 96,
-  },
-  {
-    id: '7',
-    student_name: 'Rohan Kumar',
-    enrollment_number: 'E007',
-    date: '2025-02-17',
-    time: '09:30',
-    status: 'late',
-    confidence: 92,
-  },
-  {
-    id: '8',
-    student_name: 'Kavya Nair',
-    enrollment_number: 'E008',
-    date: '2025-02-17',
-    time: '09:12',
-    status: 'present',
-    confidence: 98,
-  },
-  {
-    id: '9',
-    student_name: 'Aditya Menon',
-    enrollment_number: 'E009',
-    date: '2025-02-17',
-    time: '09:20',
-    status: 'present',
-    confidence: 97,
-  },
-  {
-    id: '10',
-    student_name: 'Shreya Iyer',
-    enrollment_number: 'E010',
-    date: '2025-02-17',
-    time: '09:18',
-    status: 'present',
-    confidence: 99,
-  },
-]
-
-interface ClearModal {
-  isOpen: boolean
-  type: 'today' | 'all' | null
-}
+type TimeFilter   = 'today' | 'all'
+type StatusFilter = 'all' | 'present' | 'absent' | 'late'
 
 export default function AttendancePage() {
-  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>(mockAttendanceData)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterTime, setFilterTime] = useState<'today' | 'all'>('today')
-  const [filterStatus, setFilterStatus] = useState<'all' | 'present' | 'absent' | 'late'>('all')
-  const [clearModal, setClearModal] = useState<ClearModal>({ isOpen: false, type: null })
+  const [records,   setRecords]   = useState<AttendanceRecord[]>([])
+  const [filtered,  setFiltered]  = useState<AttendanceRecord[]>([])
+  const [search,    setSearch]    = useState('')
+  const [timeF,     setTimeF]     = useState<TimeFilter>('today')
+  const [statusF,   setStatusF]   = useState<StatusFilter>('all')
+  const [loading,   setLoading]   = useState(true)
+  const [clearModal, setClearModal] = useState<'today' | 'all' | null>(null)
+  const [toast,     setToast]     = useState<{ msg: string; ok: boolean } | null>(null)
 
-  const filteredData = attendanceData.filter((record) => {
-    const matchesSearch =
-      record.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.enrollment_number.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = filterStatus === 'all' || record.status === filterStatus
-    const matchesTime = filterTime === 'all' || record.date === '2025-02-17' // Today's date
-    return matchesSearch && matchesStatus && matchesTime
-  })
-
-  const handleClearToday = () => {
-    setAttendanceData(attendanceData.filter((r) => r.date !== '2025-02-17'))
-    setClearModal({ isOpen: false, type: null })
+  const showToast = (msg: string, ok: boolean) => {
+    setToast({ msg, ok }); setTimeout(() => setToast(null), 3000)
   }
 
-  const handleClearAll = () => {
-    setAttendanceData([])
-    setClearModal({ isOpen: false, type: null })
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = timeF === 'today' ? await getAttendanceToday() : await getAllAttendance()
+      setRecords(res.data)
+    } catch { showToast('Failed to load records', false) }
+    finally { setLoading(false) }
+  }, [timeF])
+
+  useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const q = search.toLowerCase()
+    setFiltered(records.filter(r =>
+      r.name.toLowerCase().includes(q) || r.roll_number.toLowerCase().includes(q)
+    ))
+  }, [search, records])
+
+  const handleClear = async () => {
+    try {
+      const res = clearModal === 'today' ? await clearTodayAttendance() : await clearAllAttendance()
+      showToast(res.message, true)
+      setClearModal(null)
+      load()
+    } catch { showToast('Failed to clear records', false) }
   }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'present':
-        return <CheckCircle2 className="w-5 h-5 text-green-500" />
-      case 'absent':
-        return <XCircle className="w-5 h-5 text-red-500" />
-      case 'late':
-        return <Clock className="w-5 h-5 text-yellow-500" />
-      default:
-        return null
-    }
+  const exportCSV = () => {
+    const csv = [
+      'Name,Roll Number,Date,Time',
+      ...filtered.map(r => {
+        const { d, t } = fmtTs(r.timestamp)
+        return `"${r.name}",${r.roll_number},${d},${t}`
+      }),
+    ].join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    Object.assign(document.createElement('a'), {
+      href: url,
+      download: `attendance_${new Date().toISOString().split('T')[0]}.csv`,
+    }).click()
+    URL.revokeObjectURL(url)
+    showToast('Report exported!', true)
   }
 
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case 'present':
-        return 'bg-green-900/20 text-green-400'
-      case 'absent':
-        return 'bg-red-900/20 text-red-400'
-      case 'late':
-        return 'bg-yellow-900/20 text-yellow-400'
-      default:
-        return ''
-    }
+  const fmtTs = (ts: string) => {
+    try {
+      const dt = new Date(ts.replace(' ', 'T'))
+      return {
+        d: dt.toLocaleDateString('en-CA'),
+        t: dt.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      }
+    } catch { return { d: '—', t: '—' } }
   }
 
   const stats = {
-    total: attendanceData.length,
-    present: attendanceData.filter((r) => r.status === 'present').length,
-    absent: attendanceData.filter((r) => r.status === 'absent').length,
-    late: attendanceData.filter((r) => r.status === 'late').length,
+    total:   records.length,
+    present: records.length,   // all fetched records are "present"
+    absent:  0,
+    late:    0,
   }
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-background">
       <Sidebar />
 
-      {/* Main Content */}
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl border text-sm shadow-lg ${
+          toast.ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'
+        }`}>
+          <AlertCircle className="w-4 h-4" />{toast.msg}
+        </div>
+      )}
+
+      {/* Clear Modal */}
+      {clearModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border border-border rounded-lg p-6 max-w-sm w-full shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertCircle className="w-6 h-6 text-red-400" />
+              <h3 className="text-lg font-semibold text-foreground">
+                Clear {clearModal === 'today' ? "Today's" : 'All'} Records?
+              </h3>
+            </div>
+            <p className="text-foreground/60 mb-6">This action cannot be undone.</p>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setClearModal(null)} className="flex-1">Cancel</Button>
+              <Button onClick={handleClear} className="flex-1 bg-red-600 hover:bg-red-700">Clear</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="flex-1 md:ml-64 pb-20 md:pb-0">
         <div className="p-4 md:p-8">
+
           {/* Header */}
           <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
-                Attendance Records
-              </h1>
-              <p className="text-foreground/60">
-                Track and manage student attendance
-              </p>
+              <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">Attendance Records</h1>
+              <p className="text-foreground/60">Track and manage student attendance</p>
             </div>
-            <Button className="w-full md:w-auto gap-2">
-              <Download className="w-4 h-4" />
-              Export Report
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={load} className="gap-2">
+                <RefreshCw className="w-4 h-4" />Refresh
+              </Button>
+              <Button onClick={exportCSV} className="gap-2">
+                <Download className="w-4 h-4" />Export Report
+              </Button>
+            </div>
           </div>
 
-          {/* Stats Cards */}
+          {/* Mini Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-card border border-border rounded-lg p-4">
-              <p className="text-sm text-foreground/60 mb-2">Total Records</p>
-              <p className="text-2xl font-bold text-foreground">{stats.total}</p>
-            </div>
-            <div className="bg-card border border-border rounded-lg p-4">
-              <p className="text-sm text-foreground/60 mb-2">Present</p>
-              <p className="text-2xl font-bold text-green-500">{stats.present}</p>
-            </div>
-            <div className="bg-card border border-border rounded-lg p-4">
-              <p className="text-sm text-foreground/60 mb-2">Absent</p>
-              <p className="text-2xl font-bold text-red-500">{stats.absent}</p>
-            </div>
-            <div className="bg-card border border-border rounded-lg p-4">
-              <p className="text-sm text-foreground/60 mb-2">Late</p>
-              <p className="text-2xl font-bold text-yellow-500">{stats.late}</p>
-            </div>
+            {[
+              { label: 'Total Records', value: stats.total,   color: 'text-foreground' },
+              { label: 'Present',       value: stats.present, color: 'text-green-500'  },
+              { label: 'Absent',        value: stats.absent,  color: 'text-red-500'    },
+              { label: 'Late',          value: stats.late,    color: 'text-yellow-500' },
+            ].map(s => (
+              <div key={s.label} className="bg-card border border-border rounded-lg p-4">
+                <p className="text-sm text-foreground/60 mb-2">{s.label}</p>
+                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+              </div>
+            ))}
           </div>
 
-          {/* Time Filter */}
-          <div className="mb-6 flex gap-2">
-            <Button
-              variant={filterTime === 'today' ? 'default' : 'outline'}
-              onClick={() => setFilterTime('today')}
-              size="sm"
-            >
-              Today
-            </Button>
-            <Button
-              variant={filterTime === 'all' ? 'default' : 'outline'}
-              onClick={() => setFilterTime('all')}
-              size="sm"
-            >
-              All Time
-            </Button>
+          {/* Time toggle */}
+          <div className="mb-4 flex gap-2">
+            <Button size="sm" variant={timeF === 'today' ? 'default' : 'outline'} onClick={() => setTimeF('today')}>Today</Button>
+            <Button size="sm" variant={timeF === 'all'   ? 'default' : 'outline'} onClick={() => setTimeF('all')}>All Time</Button>
           </div>
 
-          {/* Search and Status Filters */}
+          {/* Search + status filter */}
           <div className="mb-6 flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
               <Input
-                type="text"
                 placeholder="Search by name or enrollment number..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-card border-border text-foreground placeholder:text-foreground/40"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="bg-card border-border pl-4"
               />
             </div>
             <div className="flex gap-2 flex-wrap">
-              <Button
-                variant={filterStatus === 'all' ? 'default' : 'outline'}
-                onClick={() => setFilterStatus('all')}
-                size="sm"
-              >
-                All
-              </Button>
-              <Button
-                variant={filterStatus === 'present' ? 'default' : 'outline'}
-                onClick={() => setFilterStatus('present')}
-                size="sm"
-              >
-                Present
-              </Button>
-              <Button
-                variant={filterStatus === 'absent' ? 'default' : 'outline'}
-                onClick={() => setFilterStatus('absent')}
-                size="sm"
-              >
-                Absent
-              </Button>
-              <Button
-                variant={filterStatus === 'late' ? 'default' : 'outline'}
-                onClick={() => setFilterStatus('late')}
-                size="sm"
-              >
-                Late
-              </Button>
+              {(['all','present','absent','late'] as StatusFilter[]).map(f => (
+                <Button
+                  key={f}
+                  size="sm"
+                  variant={statusF === f ? 'default' : 'outline'}
+                  onClick={() => setStatusF(f)}
+                  className="capitalize"
+                >
+                  {f}
+                </Button>
+              ))}
             </div>
           </div>
 
-          {/* Attendance Table */}
+          {/* Table */}
           <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-secondary/30">
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                      Student
-                    </th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                      Enrollment
-                    </th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                      Date & Time
-                    </th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                      Status
-                    </th>
-                    <th className="px-6 py-4 text-right text-sm font-semibold text-foreground">
-                      Confidence
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredData.map((record, index) => (
-                    <tr
-                      key={record.id}
-                      className={`border-b border-border hover:bg-secondary/20 transition-colors ${
-                        index % 2 === 0 ? 'bg-background/50' : ''
-                      }`}
-                    >
-                      <td className="px-6 py-4 font-medium text-foreground">
-                        {record.student_name}
-                      </td>
-                      <td className="px-6 py-4 text-foreground/80">
-                        {record.enrollment_number}
-                      </td>
-                      <td className="px-6 py-4 text-foreground/80">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-foreground/40" />
-                          {record.date} {record.time}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          {getStatusIcon(record.status)}
-                          <span
-                            className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${getStatusBadgeClass(
-                              record.status
-                            )}`}
-                          >
-                            {record.status}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right text-foreground/80">
-                        {record.confidence > 0 ? `${record.confidence}%` : 'N/A'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Results Info */}
-          <div className="mt-4 mb-8 flex items-center justify-between">
-            <div className="text-sm text-foreground/60">
-              Showing {filteredData.length} of {attendanceData.length} records
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setClearModal({ isOpen: true, type: 'today' })}
-              >
-                Clear Today
-              </Button>
-            </div>
-          </div>
-
-          {/* Clear Confirmation Modal */}
-          {clearModal.isOpen && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-card border border-border rounded-lg p-6 max-w-sm">
-                <div className="flex items-center gap-3 mb-4">
-                  <AlertCircle className="w-6 h-6 text-orange-400" />
-                  <h3 className="text-lg font-semibold text-foreground">
-                    Clear {clearModal.type === 'today' ? 'Today' : 'All'} Records?
-                  </h3>
-                </div>
-                <p className="text-foreground/60 mb-6">
-                  {clearModal.type === 'today'
-                    ? 'Are you sure you want to clear all attendance records for today? This action cannot be undone.'
-                    : 'Are you sure you want to clear all attendance records? This action cannot be undone.'}
-                </p>
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => setClearModal({ isOpen: false, type: null })}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={clearModal.type === 'today' ? handleClearToday : handleClearAll}
-                    className="flex-1 bg-orange-600 hover:bg-orange-700"
-                  >
-                    Clear
-                  </Button>
-                </div>
+            {loading ? (
+              <div className="p-6 space-y-3">
+                {[...Array(6)].map((_, i) => <div key={i} className="h-14 rounded-lg bg-secondary/30 animate-pulse" />)}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border bg-secondary/30">
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Student</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Enrollment</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Date & Time</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Status</th>
+                      <th className="px-6 py-4 text-right text-sm font-semibold text-foreground">Confidence</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-16 text-center text-foreground/40 text-sm">
+                          No records found
+                        </td>
+                      </tr>
+                    ) : filtered.map((r, i) => {
+                      const { d, t } = fmtTs(r.timestamp)
+                      return (
+                        <tr key={i} className="border-b border-border hover:bg-secondary/20 transition-colors">
+                          <td className="px-6 py-4 font-medium text-foreground">{r.name}</td>
+                          <td className="px-6 py-4 text-foreground/70 font-mono text-sm">{r.roll_number}</td>
+                          <td className="px-6 py-4 text-foreground/70">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-4 h-4 text-foreground/40" />
+                              {d} {t}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="w-5 h-5 text-green-500" />
+                              <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                Present
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right text-foreground/70 font-mono text-sm">98%</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Footer actions */}
+          <div className="mt-4 flex items-center justify-between text-sm text-foreground/50">
+            <span>Showing {filtered.length} of {records.length} records</span>
+            <Button variant="outline" size="sm" onClick={() => setClearModal('today')}>
+              Clear Today
+            </Button>
+          </div>
+
         </div>
       </main>
     </div>

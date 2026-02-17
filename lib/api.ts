@@ -1,221 +1,72 @@
-const PI_API_BASE = 'http://192.168.1.17:5000'
-
-// Types for API responses
-export interface AttendanceRecord {
-  id: string
-  student_id: string
-  student_name: string
-  timestamp: string
-  status: 'present' | 'absent' | 'late'
-  confidence: number
-}
+const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://ryze07.local:5000'
 
 export interface Student {
-  id: string
+  id: number
   name: string
-  enrollment_number: string
-  photo_url?: string
+  roll_number: string
 }
 
-export interface ClassSession {
-  id: string
-  date: string
-  start_time: string
-  end_time?: string
+export interface AttendanceRecord {
+  name: string
+  roll_number: string
+  timestamp: string
+}
+
+export interface Stats {
   total_students: number
-  present_count: number
-  absent_count: number
-  late_count: number
+  present_today: number
+  absent_today: number
+  attendance_rate: number
+  weekly_data: { date: string; count: number }[]
 }
 
 export interface SystemStatus {
-  pi_online: boolean
-  camera_active: boolean
-  led_status: 'on' | 'off'
-  buzzer_status: 'on' | 'off'
-  face_recognition_active: boolean
-  last_detection: string | null
-  connected_students: number
+  recognition_running: boolean
+  camera_connected: boolean
+  arduino_connected: boolean
+  total_students: number
+  present_today: number
+  timestamp: string
 }
 
-// Dashboard API calls
-export async function getDashboardStats() {
-  try {
-    const res = await fetch(`${PI_API_BASE}/api/stats`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!res.ok) throw new Error('Failed to fetch stats')
-    return await res.json()
-  } catch (error) {
-    console.error('Error fetching dashboard stats:', error)
-    return null
-  }
+async function get<T>(path: string): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, { signal: AbortSignal.timeout(5000) })
+  const d = await r.json()
+  if (!d.success) throw new Error(d.error || 'API error')
+  return d
 }
 
-export async function getTodayAttendance() {
-  try {
-    const res = await fetch(`${PI_API_BASE}/api/attendance/today`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!res.ok) throw new Error('Failed to fetch today attendance')
-    return await res.json() as AttendanceRecord[]
-  } catch (error) {
-    console.error('Error fetching today attendance:', error)
-    return []
-  }
+async function del<T>(path: string): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, {
+    method: 'DELETE',
+    signal: AbortSignal.timeout(5000),
+  })
+  const d = await r.json()
+  if (!d.success) throw new Error(d.error || 'API error')
+  return d
 }
 
-// Students API calls
-export async function getAllStudents() {
-  try {
-    const res = await fetch(`${PI_API_BASE}/api/students`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!res.ok) throw new Error('Failed to fetch students')
-    return await res.json() as Student[]
-  } catch (error) {
-    console.error('Error fetching students:', error)
-    return []
-  }
+async function post<T>(path: string, body?: object): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(5000),
+  })
+  const d = await r.json()
+  if (!d.success) throw new Error(d.error || 'API error')
+  return d
 }
 
-export async function getStudentAttendance(studentId: string) {
-  try {
-    const res = await fetch(`${PI_API_BASE}/api/students/${studentId}/attendance`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!res.ok) throw new Error('Failed to fetch student attendance')
-    return await res.json() as AttendanceRecord[]
-  } catch (error) {
-    console.error('Error fetching student attendance:', error)
-    return []
-  }
-}
-
-export async function addStudent(student: Omit<Student, 'id'>) {
-  try {
-    const res = await fetch(`${PI_API_BASE}/api/students`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(student),
-    })
-    if (!res.ok) throw new Error('Failed to add student')
-    return await res.json()
-  } catch (error) {
-    console.error('Error adding student:', error)
-    return null
-  }
-}
-
-// Attendance API calls
-export async function getAttendanceHistory(
-  startDate?: string,
-  endDate?: string
-) {
-  try {
-    const params = new URLSearchParams()
-    if (startDate) params.append('start_date', startDate)
-    if (endDate) params.append('end_date', endDate)
-    
-    const res = await fetch(`${PI_API_BASE}/api/attendance?${params.toString()}`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!res.ok) throw new Error('Failed to fetch attendance history')
-    return await res.json() as AttendanceRecord[]
-  } catch (error) {
-    console.error('Error fetching attendance history:', error)
-    return []
-  }
-}
-
-export async function getClassSessions() {
-  try {
-    const res = await fetch(`${PI_API_BASE}/api/sessions`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!res.ok) throw new Error('Failed to fetch sessions')
-    return await res.json() as ClassSession[]
-  } catch (error) {
-    console.error('Error fetching sessions:', error)
-    return []
-  }
-}
-
-// Control Panel API calls
-export async function getSystemStatus() {
-  try {
-    const res = await fetch(`${PI_API_BASE}/api/status`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!res.ok) throw new Error('Failed to fetch system status')
-    return await res.json() as SystemStatus
-  } catch (error) {
-    console.error('Error fetching system status:', error)
-    return null
-  }
-}
-
-export async function controlLED(state: 'on' | 'off') {
-  try {
-    const res = await fetch(`${PI_API_BASE}/api/control/led`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state }),
-    })
-    if (!res.ok) throw new Error('Failed to control LED')
-    return await res.json()
-  } catch (error) {
-    console.error('Error controlling LED:', error)
-    return null
-  }
-}
-
-export async function controlBuzzer(state: 'on' | 'off') {
-  try {
-    const res = await fetch(`${PI_API_BASE}/api/control/buzzer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state }),
-    })
-    if (!res.ok) throw new Error('Failed to control buzzer')
-    return await res.json()
-  } catch (error) {
-    console.error('Error controlling buzzer:', error)
-    return null
-  }
-}
-
-export async function startFaceRecognition() {
-  try {
-    const res = await fetch(`${PI_API_BASE}/api/control/face-recognition/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!res.ok) throw new Error('Failed to start face recognition')
-    return await res.json()
-  } catch (error) {
-    console.error('Error starting face recognition:', error)
-    return null
-  }
-}
-
-export async function stopFaceRecognition() {
-  try {
-    const res = await fetch(`${PI_API_BASE}/api/control/face-recognition/stop`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!res.ok) throw new Error('Failed to stop face recognition')
-    return await res.json()
-  } catch (error) {
-    console.error('Error stopping face recognition:', error)
-    return null
-  }
-}
+export const getStatus            = () => get<{ data: SystemStatus }>('/api/status')
+export const getStats             = () => get<{ data: Stats }>('/api/stats')
+export const getStudents          = () => get<{ data: Student[] }>('/api/students')
+export const deleteStudent        = (roll: string) => del<{ message: string }>(`/api/students/${roll}`)
+export const getAttendanceToday   = () => get<{ data: AttendanceRecord[] }>('/api/attendance/today')
+export const getAllAttendance      = () => get<{ data: AttendanceRecord[] }>('/api/attendance/all')
+export const clearTodayAttendance = () => del<{ message: string }>('/api/attendance/clear/today')
+export const clearAllAttendance   = () => del<{ message: string }>('/api/attendance/clear/all')
+export const startRecognition     = () => post<{ message: string }>('/api/recognition/start')
+export const stopRecognition      = () => post<{ message: string }>('/api/recognition/stop')
+export const registerStudent      = (name: string, roll_number: string) =>
+  post<{ message: string; data: Student }>('/api/students', { name, roll_number })
